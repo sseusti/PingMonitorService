@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -32,10 +33,64 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	return resp, nil
 }
 
+// Я ввёл тип CheckResult как единый контракт результата проверки URL (статус, latency, опциональное превью, ошибка).
+// Это упрощает параллельную обработку в worker pool и даёт готовую модель для хранения в БД и выдачи через HTTP API.
+type CheckResult struct {
+	URL      string
+	Status   int
+	Duration time.Duration
+	Preview  []byte
+	Err      error
+}
+
+func checkURL(ctx context.Context, client *http.Client, url string, withPreview bool) CheckResult {
+	start := time.Now()
+
+	res, doErr := doRequestOnce(ctx, client, url)
+	if doErr != nil {
+		return CheckResult{
+			URL:      url,
+			Status:   0,
+			Duration: duration,
+			Preview:  nil,
+			Err:      doErr,
+		}
+	}
+
+	if withPreview == true {
+		preview, previewErr := readPreviewAndDrain(res.Body, previewBytes)
+		if previewErr != nil {
+			return CheckResult{
+				URL:      url,
+				Status:   res.StatusCode,
+				Duration: duration,
+				Preview:  nil,
+				Err:      previewErr,
+			}
+		}
+		return CheckResult{
+			URL:      url,
+			Status:   res.StatusCode,
+			Duration: time.Since(start),
+			Preview:  preview,
+			Err:      nil,
+		}
+	}
+
+	drainAndClose(res.Body)
+
+	return CheckResult{
+		URL:      url,
+		Status:   res.StatusCode,
+		Duration: time.Since(start),
+		Preview:  nil,
+		Err:      nil,
+	}
+}
+
 // Я всегда протягиваю context.Context до http.NewRequestWithContext, чтобы верхний уровень (handler/worker/shutdown)
 // мог отменять запросы и задавать дедлайны. При этом client.Timeout оставляю как общий защитный предел, чтобы запросы не зависали бесконечно.
-func doRequestOnce(ctx context.Context, client *http.Client, url string) (*http.Response, time.Duration, error) {
-	start := time.Now()
+func doRequestOnce(ctx context.Context, client *http.Client, url string) (*http.Response, error) {
 
 	//Если интервьюер спросит «зачем NewRequest», ты теперь можешь сказать:
 	//Потому что http.NewRequest позволяет:
@@ -45,17 +100,17 @@ func doRequestOnce(ctx context.Context, client *http.Client, url string) (*http.
 	//писать middleware поверх запроса
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, time.Since(start), err
+		return nil, err
 	}
 
 	req.Header.Set("User-Agent", "MyGoClient/1.0")
 
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, time.Since(start), err
+		return nil, err
 	}
 
-	return res, time.Since(start), nil
+	return res, nil
 }
 
 func readPreviewAndDrain(body io.ReadCloser, n int64) ([]byte, error) {
@@ -73,6 +128,11 @@ func readPreviewAndDrain(body io.ReadCloser, n int64) ([]byte, error) {
 	_, _ = io.Copy(io.Discard, body)
 
 	return preview, nil
+}
+
+func drainAndClose(body io.ReadCloser) {
+	_, _ = io.Copy(io.Discard, body)
+	body.Close()
 }
 
 // Я разделил ответственность: doRequestOnce делает один HTTP-запрос и возвращает *http.Response, а readPreviewAndDrain
@@ -109,11 +169,13 @@ func main() {
 		},
 	}
 
-	status, duration, preview, err := doRequestPreview(ctx, client, "http://www.google.com")
-	if err != nil {
-		log.Fatal("error:", err)
+	var result CheckResult
+	result = checkURL(ctx, client, "http://www.google.com", true)
+	if result.Err != nil {
+		log.Fatal("error:", result.Err)
 	}
 
-	fmt.Printf("status: %d, duration: %s\n", status, duration)
-	fmt.Printf("preview (first 1024 bytes):\n%s\n", string(preview))
+	fmt.Println(result)
+	//fmt.Printf("status: %d, duration: %s\n", status, duration)
+	//fmt.Printf("preview (first 1024 bytes):\n%s\n", string(preview))
 }
