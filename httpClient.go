@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
-type loggingRoundTripper struct {
+type LoggingRoundTripper struct {
 	logger io.Writer
 	next   http.RoundTripper
 }
 
-func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+func (l *LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	start := time.Now()
 
 	resp, err := l.next.RoundTrip(req)
