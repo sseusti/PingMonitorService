@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -43,6 +42,17 @@ type CheckResult struct {
 	Err      error
 }
 
+// Я типизирую HTTP-ошибки через HTTPStatusError, чтобы отделить “сервер ответил 5xx” от сетевых ошибок. При этом поле
+// Err оставляю типа error, чтобы не терять другие классы ошибок, и использую errors.As для принятия решений в retry-политике.
+type HTTPStatusError struct {
+	StatusCode int
+	URL        string
+}
+
+func (e HTTPStatusError) Error() string {
+	return fmt.Sprintf("http status %d for %s", e.StatusCode, e.URL)
+}
+
 func checkURL(ctx context.Context, client *http.Client, url string, withPreview bool) CheckResult {
 	start := time.Now()
 
@@ -51,9 +61,23 @@ func checkURL(ctx context.Context, client *http.Client, url string, withPreview 
 		return CheckResult{
 			URL:      url,
 			Status:   0,
-			Duration: duration,
+			Duration: time.Since(start),
 			Preview:  nil,
 			Err:      doErr,
+		}
+	}
+
+	if res.StatusCode >= 500 {
+		drainAndClose(res.Body)
+		return CheckResult{
+			URL:      url,
+			Status:   res.StatusCode,
+			Duration: time.Since(start),
+			Preview:  nil,
+			Err: HTTPStatusError{
+				StatusCode: res.StatusCode,
+				URL:        url,
+			},
 		}
 	}
 
@@ -63,7 +87,7 @@ func checkURL(ctx context.Context, client *http.Client, url string, withPreview 
 			return CheckResult{
 				URL:      url,
 				Status:   res.StatusCode,
-				Duration: duration,
+				Duration: time.Since(start),
 				Preview:  nil,
 				Err:      previewErr,
 			}
@@ -137,19 +161,19 @@ func drainAndClose(body io.ReadCloser) {
 
 // Я разделил ответственность: doRequestOnce делает один HTTP-запрос и возвращает *http.Response, а readPreviewAndDrain
 // полностью отвечает за чтение ограниченного превью и обязательный drain/close для возврата соединения в пул. Так код проще тестировать и безопаснее использовать в параллельном worker pool.
-func doRequestPreview(ctx context.Context, client *http.Client, url string) (int, time.Duration, []byte, error) {
-	res, duration, err := doRequestOnce(ctx, client, url)
-	if err != nil {
-		return 0, duration, nil, err
-	}
-
-	preview, err := readPreviewAndDrain(res.Body, previewBytes)
-	if err != nil {
-		return res.StatusCode, duration, preview, err
-	}
-
-	return res.StatusCode, duration, preview, nil
-}
+//func doRequestPreview(ctx context.Context, client *http.Client, url string) (int, time.Duration, []byte, error) {
+//	res, duration, err := doRequestOnce(ctx, client, url)
+//	if err != nil {
+//		return 0, duration, nil, err
+//	}
+//
+//	preview, err := readPreviewAndDrain(res.Body, previewBytes)
+//	if err != nil {
+//		return res.StatusCode, duration, preview, err
+//	}
+//
+//	return res.StatusCode, duration, preview, nil
+//}
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
