@@ -13,6 +13,8 @@ import (
 )
 
 func main() {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	limit := ticker.C
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -30,7 +32,13 @@ func main() {
 		},
 	}
 
-	result := checkURL(ctx, client, "http://www.google.com", true)
+	// Я вынес retry/backoff/rate limit в независимую обёртку, а решение “ретраить или нет” — в отдельную политику
+	// ShouldRetryHTTP. Это позволяет переиспользовать один и тот же механизм для HTTP/SQL, и безопасно контролировать
+	// нагрузку при параллельной работе воркеров.
+	// Я построил устойчивую проверку URL как композицию: checkURL отвечает только за один HTTP-запрос, а
+	//retry/backoff/rate-limit вынесены в универсальную обёртку. Политика повторов инкапсулирована в ShouldRetryHTTP,
+	//что позволяет менять правила без изменения механики. Все ожидания и ретраи уважают context, поэтому код безопасен для worker pool и graceful shutdown.
+	result := checkURLStable(ctx, client, "http://www.google.com", true, limit)
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
