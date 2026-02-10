@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -29,7 +30,9 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	return resp, nil
 }
 
-func doRequestPreview(client *http.Client, url string) (int, time.Duration, []byte, error) {
+// Я всегда протягиваю context.Context до http.NewRequestWithContext, чтобы верхний уровень (handler/worker/shutdown)
+// мог отменять запросы и задавать дедлайны. При этом client.Timeout оставляю как общий защитный предел, чтобы запросы не зависали бесконечно.
+func doRequestPreview(ctx context.Context, client *http.Client, url string) (int, time.Duration, []byte, error) {
 	start := time.Now()
 
 	//Если интервьюер спросит «зачем NewRequest», ты теперь можешь сказать:
@@ -38,7 +41,7 @@ func doRequestPreview(client *http.Client, url string) (int, time.Duration, []by
 	//работать с context.Context
 	//переиспользовать один и тот же клиент
 	//писать middleware поверх запроса
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, time.Since(start), nil, err
 	}
@@ -66,6 +69,9 @@ func doRequestPreview(client *http.Client, url string) (int, time.Duration, []by
 }
 
 func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 3 {
@@ -80,7 +86,7 @@ func main() {
 		},
 	}
 
-	status, duration, preview, err := doRequestPreview(client, "http://www.google.com")
+	status, duration, preview, err := doRequestPreview(ctx, client, "http://www.google.com")
 	if err != nil {
 		log.Fatal("error:", err)
 	}
