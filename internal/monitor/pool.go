@@ -1,8 +1,4 @@
-// Я реализовал worker pool по схеме fan-out/fan-in: задания через jobs, результаты через results, завершение через
-//WaitGroup и закрытие каналов. Каждый воркер использует устойчивую проверку с retry/backoff и общий rate limit
-//через один time.Ticker, а все операции уважают context для корректной отмены
-
-package main
+package monitor
 
 import (
 	"context"
@@ -49,7 +45,7 @@ func PingAllStable(
 						return
 					}
 
-					res := checkURLStable(ctx, client, url, cfg.WithPreview, limit)
+					res := CheckURLStable(ctx, client, url, cfg.WithPreview, limit)
 
 					select {
 					case results <- res:

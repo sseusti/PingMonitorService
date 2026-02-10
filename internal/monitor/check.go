@@ -1,15 +1,16 @@
-package main
+package monitor
 
 import (
+	"PingMonitorService/internal/httpx"
 	"context"
 	"net/http"
 	"time"
 )
 
-func checkURL(ctx context.Context, client *http.Client, url string, withPreview bool) CheckResult {
+func CheckURL(ctx context.Context, client *http.Client, url string, withPreview bool) CheckResult {
 	start := time.Now()
 
-	res, err := doRequestOnce(ctx, client, url)
+	res, err := httpx.DoRequestOnce(ctx, client, url)
 	if err != nil {
 		return CheckResult{
 			URL:      url,
@@ -22,7 +23,7 @@ func checkURL(ctx context.Context, client *http.Client, url string, withPreview 
 	// Важно: при любом return после получения res — закрыть/дочитать body
 	if res.StatusCode >= 500 {
 		// можно оставить preview nil сейчас; улучшим на шаге 5
-		drainAndClose(res.Body)
+		httpx.DrainAndClose(res.Body)
 		return CheckResult{
 			URL:      url,
 			Status:   res.StatusCode,
@@ -32,7 +33,7 @@ func checkURL(ctx context.Context, client *http.Client, url string, withPreview 
 	}
 
 	if withPreview {
-		preview, pErr := readPreviewAndDrain(res.Body, previewBytes)
+		preview, pErr := httpx.ReadPreviewAndDrain(res.Body, PreviewBytes)
 		if pErr != nil {
 			return CheckResult{
 				URL:      url,
@@ -49,7 +50,7 @@ func checkURL(ctx context.Context, client *http.Client, url string, withPreview 
 		}
 	}
 
-	drainAndClose(res.Body)
+	httpx.DrainAndClose(res.Body)
 	return CheckResult{
 		URL:      url,
 		Status:   res.StatusCode,

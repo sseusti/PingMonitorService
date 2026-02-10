@@ -1,12 +1,13 @@
-package main
+package monitor
 
 import (
+	"PingMonitorService/internal/netx"
 	"context"
 	"net/http"
 	"time"
 )
 
-func checkURLStable(
+func CheckURLStable(
 	ctx context.Context,
 	client *http.Client,
 	url string,
@@ -19,10 +20,10 @@ func checkURLStable(
 	baseDelay := 200 * time.Millisecond
 	maxDelay := 2 * time.Second
 
-	err := DoWithRetryBackoffRateLimit(
+	err := netx.DoWithRetryBackoffRateLimit(
 		ctx,
 		func(ctx context.Context) error {
-			last = checkURL(ctx, client, url, withPreview)
+			last = CheckURL(ctx, client, url, withPreview)
 			return last.Err
 		},
 		attempts,

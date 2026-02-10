@@ -1,9 +1,14 @@
 // Я разложил код по смысловым файлам: транспорт/клиент, IO-утилиты, доменные типы и логика проверки. Это снижает
 //связность, упрощает тестирование и подготавливает проект к росту (worker pool / server / storage), не меняя поведение программы.
 
+// Я разделил проект на уровни: httpx для низкоуровневого HTTP и корректного drain/close, netx для универсального
+// retry/backoff, и monitor для доменной логики проверки и worker pool. main — только wiring.
+// Это устраняет циклические зависимости и позволяет легко расширять проект сервером и SQL.
 package main
 
 import (
+	"PingMonitorService/internal/httpx"
+	"PingMonitorService/internal/monitor"
 	"context"
 	"fmt"
 	"net/http"
@@ -31,9 +36,9 @@ func main() {
 			return nil
 		},
 		Timeout: 10 * time.Second,
-		Transport: &LoggingRoundTripper{
-			logger: os.Stdout,
-			next:   http.DefaultTransport,
+		Transport: &httpx.LoggingRoundTripper{
+			Logger: os.Stdout,
+			Next:   http.DefaultTransport,
 		},
 	}
 
@@ -43,13 +48,13 @@ func main() {
 	// Я построил устойчивую проверку URL как композицию: checkURL отвечает только за один HTTP-запрос, а
 	//retry/backoff/rate-limit вынесены в универсальную обёртку. Политика повторов инкапсулирована в ShouldRetryHTTP,
 	//что позволяет менять правила без изменения механики. Все ожидания и ретраи уважают context, поэтому код безопасен для worker pool и graceful shutdown.
-	//result := checkURLStable(ctx, client, "http://www.google.com", true, limit)
+	//result := CheckURLStable(ctx, client, "http://www.google.com", true, limit)
 	//if result.Err != nil {
 	//	log.Fatal(result.Err)
 	//}
 	//fmt.Println(result)
 
-	out := PingAllStable(ctx, client, urls, PoolConfig{Workers: 4, WithPreview: false})
+	out := monitor.PingAllStable(ctx, client, urls, monitor.PoolConfig{Workers: 4, WithPreview: false})
 	for _, o := range out {
 		if o.Err != nil {
 			fmt.Printf("[%s] error: %s | %v | %d\n", o.URL, o.Err, o.Duration, o.Status)

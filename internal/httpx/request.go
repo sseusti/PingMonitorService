@@ -1,36 +1,13 @@
-package main
+package httpx
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"net/http"
-	"time"
 )
-
-type LoggingRoundTripper struct {
-	logger io.Writer
-	next   http.RoundTripper
-}
-
-func (l *LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	start := time.Now()
-
-	resp, err := l.next.RoundTrip(req)
-
-	dur := time.Since(start)
-
-	if err != nil {
-		fmt.Fprintf(l.logger, "[%s] %s %s -> error (%v) (%v)\n", time.Now().Format(time.ANSIC), req.Method, req.URL, err, dur)
-		return nil, err
-	}
-	fmt.Fprintf(l.logger, "[%s] %s %s -> %d (%v)\n", time.Now().Format(time.ANSIC), req.Method, req.URL, resp.StatusCode, dur)
-	return resp, nil
-}
 
 // Я всегда протягиваю context.Context до http.NewRequestWithContext, чтобы верхний уровень (handler/worker/shutdown)
 // мог отменять запросы и задавать дедлайны. При этом client.Timeout оставляю как общий защитный предел, чтобы запросы не зависали бесконечно.
-func doRequestOnce(ctx context.Context, client *http.Client, url string) (*http.Response, error) {
+func DoRequestOnce(ctx context.Context, client *http.Client, url string) (*http.Response, error) {
 
 	//Если интервьюер спросит «зачем NewRequest», ты теперь можешь сказать:
 	//Потому что http.NewRequest позволяет:

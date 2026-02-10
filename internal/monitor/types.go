@@ -1,11 +1,11 @@
-package main
+package monitor
 
 import (
 	"fmt"
 	"time"
 )
 
-const previewBytes = 1024
+const PreviewBytes = 1024
 
 // Я ввёл тип CheckResult как единый контракт результата проверки URL (статус, latency, опциональное превью, ошибка).
 // Это упрощает параллельную обработку в worker pool и даёт готовую модель для хранения в БД и выдачи через HTTP API.

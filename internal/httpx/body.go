@@ -1,8 +1,8 @@
-package main
+package httpx
 
 import "io"
 
-func readPreviewAndDrain(body io.ReadCloser, n int64) ([]byte, error) {
+func ReadPreviewAndDrain(body io.ReadCloser, n int64) ([]byte, error) {
 	defer body.Close()
 
 	// В HTTP-клиенте тело ответа — это поток, связанный с TCP-соединением.
@@ -19,7 +19,7 @@ func readPreviewAndDrain(body io.ReadCloser, n int64) ([]byte, error) {
 	return preview, nil
 }
 
-func drainAndClose(body io.ReadCloser) {
+func DrainAndClose(body io.ReadCloser) {
 	_, _ = io.Copy(io.Discard, body)
 	body.Close()
 }
