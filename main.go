@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const previewBytes = 1024
+
 type loggingRoundTripper struct {
 	logger io.Writer
 	next   http.RoundTripper
@@ -32,7 +34,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 
 // Я всегда протягиваю context.Context до http.NewRequestWithContext, чтобы верхний уровень (handler/worker/shutdown)
 // мог отменять запросы и задавать дедлайны. При этом client.Timeout оставляю как общий защитный предел, чтобы запросы не зависали бесконечно.
-func doRequestPreview(ctx context.Context, client *http.Client, url string) (int, time.Duration, []byte, error) {
+func doRequestOnce(ctx context.Context, client *http.Client, url string) (*http.Response, time.Duration, error) {
 	start := time.Now()
 
 	//Если интервьюер спросит «зачем NewRequest», ты теперь можешь сказать:
@@ -43,29 +45,50 @@ func doRequestPreview(ctx context.Context, client *http.Client, url string) (int
 	//писать middleware поверх запроса
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return 0, time.Since(start), nil, err
+		return nil, time.Since(start), err
 	}
 
 	req.Header.Set("User-Agent", "MyGoClient/1.0")
 
 	res, err := client.Do(req)
 	if err != nil {
-		return 0, time.Since(start), nil, err
+		return nil, time.Since(start), err
 	}
+
+	return res, time.Since(start), nil
+}
+
+func readPreviewAndDrain(body io.ReadCloser, n int64) ([]byte, error) {
+	defer body.Close()
 
 	// В HTTP-клиенте тело ответа — это поток, связанный с TCP-соединением.
 	// Если читать только часть тела и не дочитать остаток, соединение не возвращается в пул.
 	// Поэтому при частичном чтении нужно сначала использовать io.LimitReader, а затем дочитать остаток в io.Discard.
-	defer res.Body.Close()
-
-	limited := io.LimitReader(res.Body, 1024)
+	limited := io.LimitReader(body, n)
 	preview, err := io.ReadAll(limited)
 	if err != nil {
-		return 0, time.Since(start), nil, err
+		return nil, err
 	}
-	_, _ = io.Copy(io.Discard, res.Body)
 
-	return res.StatusCode, time.Since(start), preview, nil
+	_, _ = io.Copy(io.Discard, body)
+
+	return preview, nil
+}
+
+// Я разделил ответственность: doRequestOnce делает один HTTP-запрос и возвращает *http.Response, а readPreviewAndDrain
+// полностью отвечает за чтение ограниченного превью и обязательный drain/close для возврата соединения в пул. Так код проще тестировать и безопаснее использовать в параллельном worker pool.
+func doRequestPreview(ctx context.Context, client *http.Client, url string) (int, time.Duration, []byte, error) {
+	res, duration, err := doRequestOnce(ctx, client, url)
+	if err != nil {
+		return 0, duration, nil, err
+	}
+
+	preview, err := readPreviewAndDrain(res.Body, previewBytes)
+	if err != nil {
+		return res.StatusCode, duration, preview, err
+	}
+
+	return res.StatusCode, duration, preview, nil
 }
 
 func main() {
