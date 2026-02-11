@@ -10,6 +10,8 @@ import (
 type PoolConfig struct {
 	Workers     int
 	WithPreview bool
+	RPS         int
+	Retry       RetryConfig
 }
 
 func PingAllStable(
@@ -22,7 +24,11 @@ func PingAllStable(
 		cfg.Workers = 1
 	}
 
-	ticker := time.NewTicker(200 * time.Millisecond)
+	interval := 200 * time.Millisecond
+	if cfg.RPS > 0 {
+		interval = time.Second / time.Duration(cfg.RPS)
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	limit := ticker.C
 
@@ -45,7 +51,7 @@ func PingAllStable(
 						return
 					}
 
-					res := CheckURLStable(ctx, client, url, cfg.WithPreview, limit)
+					res := CheckURLStable(ctx, client, url, cfg.WithPreview, limit, cfg.Retry)
 
 					select {
 					case results <- res:

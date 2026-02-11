@@ -13,12 +13,10 @@ func CheckURLStable(
 	url string,
 	withPreview bool,
 	limit <-chan time.Time,
+	rc RetryConfig,
 ) CheckResult {
 	start := time.Now()
 	var last CheckResult
-	attempts := 4
-	baseDelay := 200 * time.Millisecond
-	maxDelay := 2 * time.Second
 
 	err := netx.DoWithRetryBackoffRateLimit(
 		ctx,
@@ -26,9 +24,9 @@ func CheckURLStable(
 			last = CheckURL(ctx, client, url, withPreview)
 			return last.Err
 		},
-		attempts,
-		baseDelay,
-		maxDelay,
+		rc.Attempts,
+		rc.BaseDelay,
+		rc.MaxDelay,
 		limit,
 		ShouldRetryHTTP,
 	)
