@@ -3,6 +3,7 @@ package api
 import (
 	"PingMonitorService/internal/jobs"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -39,9 +40,12 @@ func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	resp := JobStatusResponse{JobID: job.ID, Status: job.Status, CreatedAt: job.CreatedAt, Total: job.Total, Done: job.Done}
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("encode get job response: %v", err)
+	}
 }
 
 func New(store *jobs.Store) *Handler {
