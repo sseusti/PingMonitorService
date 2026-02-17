@@ -6,9 +6,10 @@ import (
 	"net/http"
 )
 
-func Router() http.Handler {
+func Router(h *Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handlers.HealthHandler)
+	mux.HandleFunc("/api/v1/checks", h.CreateChecks)
 
 	// Я добавил middleware слой: logger для наблюдаемости (status/latency на каждый запрос, в т.ч. 404/401) и recover,
 	// чтобы паника в одном handler не уронила процесс. Это повышает надёжность и упрощает диагностику в проде.
