@@ -57,6 +57,58 @@ func (s *Store) SetStatus(id string, status Status) bool {
 	return true
 }
 
+func (s *Store) SetRunning(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	j, ok := s.jobs[id]
+	if !ok {
+		return false
+	}
+
+	j.Status = Running
+	s.jobs[id] = j
+
+	return true
+}
+
+func (s *Store) SetResults(id string, results []Result) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	j, ok := s.jobs[id]
+	if !ok {
+		return false
+	}
+
+	j.Status = Done
+	j.Done = len(results)
+	j.Results = results
+	t := time.Now().UTC()
+	j.FinishedAt = &t
+	s.jobs[id] = j
+
+	return true
+}
+
+func (s *Store) SetFailed(id string, err error) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	j, ok := s.jobs[id]
+	if !ok {
+		return false
+	}
+
+	j.Status = Failed
+	j.Error = err.Error()
+	t := time.Now().UTC()
+	j.FinishedAt = &t
+	s.jobs[id] = j
+
+	return true
+}
+
 func NewID() string {
 	var b [16]byte
 	_, err := rand.Read(b[:])
