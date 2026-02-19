@@ -20,9 +20,7 @@ func CheckURL(ctx context.Context, client *http.Client, url string, withPreview 
 		}
 	}
 
-	// Важно: при любом return после получения res — закрыть/дочитать body
 	if res.StatusCode >= 500 {
-		// можно оставить preview nil сейчас; улучшим на шаге 5
 		httpx.DrainAndClose(res.Body)
 		return CheckResult{
 			URL:      url,

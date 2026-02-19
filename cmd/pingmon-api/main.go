@@ -36,9 +36,6 @@ func main() {
 	runner := app.NewRunner(store, client, cfg, 30*time.Second, nil)
 	a := api.New(store, runner.Run)
 	handler := api.Router(a)
-	// Я вынес роутинг и handlers из cmd в internal/api, чтобы точка входа была максимально тонкой: только сборка
-	// зависимостей и запуск сервера. Это улучшает тестируемость (router/handlers тестируются через httptest),
-	//снижает связность и упрощает расширение API — новые эндпоинты добавляются в одном месте без роста main.go.
 	srv := &http.Server{
 		Addr:              ":8080",
 		Handler:           handler,

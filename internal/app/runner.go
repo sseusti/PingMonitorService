@@ -55,13 +55,6 @@ func (r *Runner) Run(jobID string, urls []string) {
 	defer cancel()
 
 	raws := r.pingAll(ctx, r.client, urls, r.cfg)
-	if err := ctx.Err(); err != nil {
-		if !r.store.SetFailed(jobID, err) {
-			log.Printf("store.SetFailed failed, jobID: %s", jobID)
-		}
-		return
-	}
-
 	results := make([]jobs.Result, 0, len(raws))
 
 	for _, raw := range raws {
@@ -79,6 +72,20 @@ func (r *Runner) Run(jobID string, urls []string) {
 		}
 
 		results = append(results, res)
+	}
+
+	if err := ctx.Err(); err != nil {
+		if len(results) > 0 {
+			partialErr := fmt.Errorf("partial: %w", err)
+			if !r.store.SetFailedWithResults(jobID, partialErr, results) {
+				log.Printf("store.SetFailedWithResults failed, jobID: %s", jobID)
+			}
+			return
+		}
+		if !r.store.SetFailed(jobID, err) {
+			log.Printf("store.SetFailed failed, jobID: %s", jobID)
+		}
+		return
 	}
 
 	ok := r.store.SetResults(jobID, results)

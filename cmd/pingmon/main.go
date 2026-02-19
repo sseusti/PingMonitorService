@@ -1,9 +1,3 @@
-// Я разложил код по смысловым файлам: транспорт/клиент, IO-утилиты, доменные типы и логика проверки. Это снижает
-//связность, упрощает тестирование и подготавливает проект к росту (worker pool / server / storage), не меняя поведение программы.
-
-// Я разделил проект на уровни: httpx для низкоуровневого HTTP и корректного drain/close, netx для универсального
-// retry/backoff, и monitor для доменной логики проверки и worker pool. main — только wiring.
-// Это устраняет циклические зависимости и позволяет легко расширять проект сервером и SQL.
 package main
 
 import (
@@ -67,18 +61,6 @@ func main() {
 			MaxDelay:  *maxDelay,
 		},
 	}
-
-	// Я вынес retry/backoff/rate limit в независимую обёртку, а решение “ретраить или нет” — в отдельную политику
-	// ShouldRetryHTTP. Это позволяет переиспользовать один и тот же механизм для HTTP/SQL, и безопасно контролировать
-	// нагрузку при параллельной работе воркеров.
-	// Я построил устойчивую проверку URL как композицию: checkURL отвечает только за один HTTP-запрос, а
-	//retry/backoff/rate-limit вынесены в универсальную обёртку. Политика повторов инкапсулирована в ShouldRetryHTTP,
-	//что позволяет менять правила без изменения механики. Все ожидания и ретраи уважают context, поэтому код безопасен для worker pool и graceful shutdown.
-	//result := CheckURLStable(ctx, client, "http://www.google.com", true, limit)
-	//if result.Err != nil {
-	//	log.Fatal(result.Err)
-	//}
-	//fmt.Println(result)
 
 	out := monitor.PingAllStable(ctx, client, urls, cfg)
 	for _, o := range out {

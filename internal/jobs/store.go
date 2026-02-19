@@ -92,6 +92,10 @@ func (s *Store) SetResults(id string, results []Result) bool {
 }
 
 func (s *Store) SetFailed(id string, err error) bool {
+	return s.SetFailedWithResults(id, err, nil)
+}
+
+func (s *Store) SetFailedWithResults(id string, err error, results []Result) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -102,6 +106,10 @@ func (s *Store) SetFailed(id string, err error) bool {
 
 	j.Status = Failed
 	j.Error = err.Error()
+	if results != nil {
+		j.Results = results
+		j.Done = len(results)
+	}
 	t := time.Now().UTC()
 	j.FinishedAt = &t
 	s.jobs[id] = j

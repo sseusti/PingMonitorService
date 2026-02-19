@@ -31,6 +31,8 @@ type JobResultDTO struct {
 
 type JobResultsResponse struct {
 	JobID   string         `json:"job_id"`
+	Status  jobs.Status    `json:"status"`
+	Error   string         `json:"error,omitempty"`
 	Results []JobResultDTO `json:"results"`
 }
 
@@ -105,23 +107,33 @@ func (h *Handler) GetJobResults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(JobResultsResponse{
+	resp := JobResultsResponse{
 		JobID:   job.ID,
+		Status:  job.Status,
 		Results: results,
-	}); err != nil {
+	}
+
+	switch job.Status {
+	case jobs.Running:
+		w.WriteHeader(http.StatusAccepted)
+	case jobs.Done:
+		w.WriteHeader(http.StatusOK)
+	case jobs.Failed:
+		resp.Error = job.Error
+		w.WriteHeader(http.StatusOK)
+	default:
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("encode get job results response: %v", err)
 	}
 }
 
-func New(store *jobs.Store, runJob ...func(jobID string, urls []string)) *Handler {
-	var runner func(jobID string, urls []string)
-	if len(runJob) > 0 {
-		runner = runJob[0]
-	}
-
+func New(store *jobs.Store, runJob func(jobID string, urls []string)) *Handler {
 	return &Handler{
 		store:  store,
-		runJob: runner,
+		runJob: runJob,
 	}
 }
