@@ -21,9 +21,24 @@ type JobStatusResponse struct {
 	Done      int         `json:"done"`
 }
 
+type JobResultDTO struct {
+	URL      string `json:"url"`
+	Status   int    `json:"status"`
+	Error    string `json:"error,omitempty"`
+	Duration int64  `json:"duration_ms"`
+}
+
 type JobResultsResponse struct {
-	JobID   string `json:"job_id"`
-	Results []any  `json:"results"`
+	JobID   string         `json:"job_id"`
+	Results []JobResultDTO `json:"results"`
+}
+
+func (h *Handler) JobDispatcher(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/results") {
+		h.GetJobResults(w, r)
+		return
+	}
+	h.GetJob(w, r)
 }
 
 func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +97,7 @@ func (h *Handler) GetJobResults(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(JobResultsResponse{
 		JobID:   job.ID,
-		Results: []any{},
+		Results: []JobResultDTO{},
 	}); err != nil {
 		log.Printf("encode get job results response: %v", err)
 	}
