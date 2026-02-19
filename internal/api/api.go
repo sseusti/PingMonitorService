@@ -10,7 +10,8 @@ import (
 )
 
 type Handler struct {
-	store *jobs.Store
+	store  *jobs.Store
+	runJob func(jobID string, urls []string)
 }
 
 type JobStatusResponse struct {
@@ -93,18 +94,34 @@ func (h *Handler) GetJobResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	results := make([]JobResultDTO, 0, len(job.Results))
+	for _, result := range job.Results {
+		results = append(results, JobResultDTO{
+			URL:      result.URL,
+			Status:   result.StatusCode,
+			Error:    result.Error,
+			Duration: result.Duration.Milliseconds(),
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(JobResultsResponse{
 		JobID:   job.ID,
-		Results: []JobResultDTO{},
+		Results: results,
 	}); err != nil {
 		log.Printf("encode get job results response: %v", err)
 	}
 }
 
-func New(store *jobs.Store) *Handler {
+func New(store *jobs.Store, runJob ...func(jobID string, urls []string)) *Handler {
+	var runner func(jobID string, urls []string)
+	if len(runJob) > 0 {
+		runner = runJob[0]
+	}
+
 	return &Handler{
-		store: store,
+		store:  store,
+		runJob: runner,
 	}
 }

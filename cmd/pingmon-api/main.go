@@ -2,15 +2,39 @@ package main
 
 import (
 	"PingMonitorService/internal/api"
+	"PingMonitorService/internal/app"
+	"PingMonitorService/internal/httpx"
 	"PingMonitorService/internal/jobs"
+	"PingMonitorService/internal/monitor"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
 func main() {
 	store := jobs.NewStore()
-	a := api.New(store)
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &httpx.LoggingRoundTripper{
+			Logger: os.Stdout,
+			Next:   http.DefaultTransport,
+		},
+	}
+
+	cfg := monitor.PoolConfig{
+		Workers:     4,
+		WithPreview: false,
+		RPS:         5,
+		Retry: monitor.RetryConfig{
+			Attempts:  3,
+			BaseDelay: 200 * time.Millisecond,
+			MaxDelay:  2 * time.Second,
+		},
+	}
+
+	runner := app.NewRunner(store, client, cfg, 30*time.Second, nil)
+	a := api.New(store, runner.Run)
 	handler := api.Router(a)
 	// Я вынес роутинг и handlers из cmd в internal/api, чтобы точка входа была максимально тонкой: только сборка
 	// зависимостей и запуск сервера. Это улучшает тестируемость (router/handlers тестируются через httptest),

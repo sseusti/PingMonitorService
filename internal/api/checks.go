@@ -51,6 +51,10 @@ func (h *Handler) CreateChecks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job := h.store.Create(len(req.URLs))
+	if h.runJob != nil {
+		urlsCopy := append([]string(nil), req.URLs...)
+		go h.runJob(job.ID, urlsCopy)
+	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
