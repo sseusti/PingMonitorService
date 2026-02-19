@@ -21,6 +21,11 @@ type JobStatusResponse struct {
 	Done      int         `json:"done"`
 }
 
+type JobResultsResponse struct {
+	JobID   string `json:"job_id"`
+	Results []any  `json:"results"`
+}
+
 func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
@@ -29,7 +34,7 @@ func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := strings.TrimPrefix(r.URL.Path, "/api/v1/jobs/")
-	if id == "" {
+	if id == "" || strings.Contains(id, "/") {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -45,6 +50,41 @@ func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 	resp := JobStatusResponse{JobID: job.ID, Status: job.Status, CreatedAt: job.CreatedAt, Total: job.Total, Done: job.Done}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("encode get job response: %v", err)
+	}
+}
+
+func (h *Handler) GetJobResults(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/jobs/")
+	if !strings.HasSuffix(path, "/results") {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	id := strings.TrimSuffix(path, "/results")
+	if id == "" || strings.Contains(id, "/") {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	job, ok := h.store.Get(id)
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(JobResultsResponse{
+		JobID:   job.ID,
+		Results: []any{},
+	}); err != nil {
+		log.Printf("encode get job results response: %v", err)
 	}
 }
 
