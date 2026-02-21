@@ -3,6 +3,7 @@ package main
 import (
 	"PingMonitorService/internal/api"
 	"PingMonitorService/internal/app"
+	"PingMonitorService/internal/db"
 	"PingMonitorService/internal/httpx"
 	"PingMonitorService/internal/jobs"
 	"PingMonitorService/internal/monitor"
@@ -13,6 +14,21 @@ import (
 )
 
 func main() {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL environment variable not set")
+	}
+
+	database, err := db.OpenPostgres(dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = db.EnsureSchema(database)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	store := jobs.NewStore()
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -45,7 +61,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	err := srv.ListenAndServe()
+	err = srv.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
 	}
