@@ -29,7 +29,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	store := jobs.NewStore()
+	repo := jobs.NewRepo(database)
+
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &httpx.LoggingRoundTripper{
@@ -49,8 +50,8 @@ func main() {
 		},
 	}
 
-	runner := app.NewRunner(store, client, cfg, 30*time.Second, nil)
-	a := api.New(store, runner.Run)
+	runner := app.NewRunner(repo, client, cfg, 30*time.Second, nil)
+	a := api.New(repo, runner.Run)
 	handler := api.Router(a)
 	srv := &http.Server{
 		Addr:              ":8080",
