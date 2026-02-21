@@ -3,7 +3,6 @@ package jobs
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"time"
 )
 
@@ -18,10 +17,6 @@ func NewRepo(db *sql.DB) *Repo {
 }
 
 func (r *Repo) Create(ctx context.Context, total int) (Job, error) {
-	if ctx.Err() != nil {
-		return Job{}, ctx.Err()
-	}
-
 	j := Job{
 		ID:         NewID(),
 		Status:     Running,
@@ -32,7 +27,7 @@ func (r *Repo) Create(ctx context.Context, total int) (Job, error) {
 		Error:      "",
 	}
 
-	_, err := r.db.Exec("insert into jobs (id, status, created_at, finished_at, total, done, error) values ($1, $2, $3, $4, $5, $6, $7)",
+	_, err := r.db.ExecContext(ctx, "insert into jobs (id, status, created_at, finished_at, total, done, error) values ($1, $2, $3, $4, $5, $6, $7)",
 		j.ID,
 		j.Status,
 		j.CreatedAt,
@@ -48,43 +43,46 @@ func (r *Repo) Create(ctx context.Context, total int) (Job, error) {
 	return j, nil
 }
 
-func (r *Repo) Get(ctx context.Context, id int) (Job, bool, error) {
+func (r *Repo) Get(ctx context.Context, id string) (Job, bool, error) {
 	if ctx.Err() != nil {
 		return Job{}, false, ctx.Err()
 	}
 
-	_, err := r.db.Exec("select id, status, created_at, finished_at, done, error from jobs where id = $1", id)
+	row := r.db.QueryRowContext(ctx, "select id, status, created_at, finished_at, done, error from jobs where id = $1", id)
+
+	j := Job{}
+	err := row.Scan(&j.ID, &j.Status, &j.CreatedAt, &j.FinishedAt, &j.Error)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if err == sql.ErrNoRows {
 			return Job{}, false, nil
 		}
 		return Job{}, false, err
 	}
 
-	return Job{}, true, nil
+	return j, true, nil
 }
 
 func (r *Repo) MarkDone(ctx context.Context, id string) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	_, err := r.db.Exec("update jobs set status = 'done', done = total, finished_at = now(), error= null where id = $1", id)
+	res, err := r.db.ExecContext(ctx, "update jobs set status = 'done', done = total, finished_at = now(), error= null where id = $1", id)
 	if err != nil {
 		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 
 	return nil
 }
 
 func (r *Repo) MarkFailed(ctx context.Context, id string, msg string) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	_, err := r.db.Exec("update jobs set status = 'failed', error = $2, finished_at = now() where id = $1", id, msg)
+	res, err := r.db.ExecContext(ctx, "update jobs set status = 'failed', error = $2, finished_at = now() where id = $1", id, msg)
 	if err != nil {
 		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 
 	return nil
