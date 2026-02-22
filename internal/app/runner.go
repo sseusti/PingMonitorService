@@ -14,14 +14,14 @@ import (
 type PingAllFunc func(ctx context.Context, client *http.Client, urls []string, cfg monitor.PoolConfig) []monitor.CheckResult
 
 type Runner struct {
-	store   *jobs.Store
+	repo    *jobs.Repo
 	pingAll PingAllFunc
 	timeout time.Duration
 	client  *http.Client
 	cfg     monitor.PoolConfig
 }
 
-func NewRunner(store *jobs.Store, client *http.Client, cfg monitor.PoolConfig, timeout time.Duration, pingAll PingAllFunc) *Runner {
+func NewRunner(repo *jobs.Repo, client *http.Client, cfg monitor.PoolConfig, timeout time.Duration, pingAll PingAllFunc) *Runner {
 	if pingAll == nil {
 		pingAll = monitor.PingAllStable
 	}
@@ -33,7 +33,7 @@ func NewRunner(store *jobs.Store, client *http.Client, cfg monitor.PoolConfig, t
 	}
 
 	return &Runner{
-		store:   store,
+		repo:    repo,
 		pingAll: pingAll,
 		timeout: timeout,
 		client:  client,
@@ -42,55 +42,31 @@ func NewRunner(store *jobs.Store, client *http.Client, cfg monitor.PoolConfig, t
 }
 
 func (r *Runner) Run(jobID string, urls []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+	defer cancel()
+
 	defer func() {
 		rec := recover()
 		if rec == nil {
 			return
 		}
 		log.Printf("runner panic for job %s: %v\n%s", jobID, rec, debug.Stack())
-		r.store.SetFailed(jobID, fmt.Errorf("panic: %v", rec))
+		if err := r.repo.MarkFailed(context.Background(), jobID, fmt.Sprintf("panic: %v", rec)); err != nil {
+			log.Printf("repo.MarkFailed failed after panic, jobID: %s, err: %v", jobID, err)
+		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
-	defer cancel()
-
-	raws := r.pingAll(ctx, r.client, urls, r.cfg)
-	results := make([]jobs.Result, 0, len(raws))
-
-	for _, raw := range raws {
-		errText := ""
-		if raw.Err != nil {
-			errText = raw.Err.Error()
-		}
-
-		res := jobs.Result{
-			URL:        raw.URL,
-			StatusCode: raw.Status,
-			OK:         raw.Err == nil,
-			Duration:   raw.Duration,
-			Error:      errText,
-		}
-
-		results = append(results, res)
-	}
+	_ = r.pingAll(ctx, r.client, urls, r.cfg)
 
 	if err := ctx.Err(); err != nil {
-		if len(results) > 0 {
-			partialErr := fmt.Errorf("partial: %w", err)
-			if !r.store.SetFailedWithResults(jobID, partialErr, results) {
-				log.Printf("store.SetFailedWithResults failed, jobID: %s", jobID)
-			}
-			return
-		}
-		if !r.store.SetFailed(jobID, err) {
-			log.Printf("store.SetFailed failed, jobID: %s", jobID)
+		if markErr := r.repo.MarkFailed(ctx, jobID, err.Error()); markErr != nil {
+			log.Printf("repo.MarkFailed failed, jobID: %s, err: %v", jobID, markErr)
 		}
 		return
 	}
 
-	ok := r.store.SetResults(jobID, results)
-	if !ok {
-		log.Printf("store.SetResults failed, jobID: %s", jobID)
+	if err := r.repo.MarkDone(ctx, jobID); err != nil {
+		log.Printf("repo.MarkDone failed, jobID: %s, err: %v", jobID, err)
 		return
 	}
 }

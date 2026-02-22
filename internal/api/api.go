@@ -10,7 +10,7 @@ import (
 )
 
 type Handler struct {
-	store  *jobs.Store
+	repo   *jobs.Repo
 	runJob func(jobID string, urls []string)
 }
 
@@ -57,7 +57,11 @@ func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, ok := h.store.Get(id)
+	job, ok, err := h.repo.Get(r.Context(), id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -66,7 +70,7 @@ func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	resp := JobStatusResponse{JobID: job.ID, Status: job.Status, CreatedAt: job.CreatedAt, Total: job.Total, Done: job.Done}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	if err = json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("encode get job response: %v", err)
 	}
 }
@@ -90,7 +94,11 @@ func (h *Handler) GetJobResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, ok := h.store.Get(id)
+	job, ok, err := h.repo.Get(r.Context(), id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -126,14 +134,14 @@ func (h *Handler) GetJobResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	if err = json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("encode get job results response: %v", err)
 	}
 }
 
-func New(store *jobs.Store, runJob func(jobID string, urls []string)) *Handler {
+func New(repo *jobs.Repo, runJob func(jobID string, urls []string)) *Handler {
 	return &Handler{
-		store:  store,
+		repo:   repo,
 		runJob: runJob,
 	}
 }

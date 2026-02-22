@@ -50,7 +50,12 @@ func (h *Handler) CreateChecks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job := h.store.Create(len(req.URLs))
+	job, err := h.repo.Create(r.Context(), len(req.URLs))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	if h.runJob != nil {
 		urlsCopy := append([]string(nil), req.URLs...)
 		go h.runJob(job.ID, urlsCopy)
@@ -58,7 +63,7 @@ func (h *Handler) CreateChecks(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(createChecksResponse{JobID: job.ID}); err != nil {
+	if err = json.NewEncoder(w).Encode(createChecksResponse{JobID: job.ID}); err != nil {
 		log.Printf("encode create checks response: %v", err)
 	}
 }
