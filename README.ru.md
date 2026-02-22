@@ -38,10 +38,17 @@ go build -o pingmon-api ./cmd/pingmon-api
 Запуск сервера:
 
 ```sh
+export DATABASE_URL='postgres://postgres:password@127.0.0.1:5432/postgres?sslmode=disable'
 ./pingmon-api
 ```
 
 Сервер слушает `:8080`.
+Переменная `DATABASE_URL` обязательна.
+
+Текущий режим хранения: `jobs-only` в PostgreSQL:
+- Метаданные job (`id`, `status`, время, счётчики, ошибка) сохраняются в Postgres.
+- `GET /api/v1/jobs/{job_id}` переживает перезапуск сервера.
+- Детальные результаты по URL пока не сохраняются в БД.
 
 ### Эндпоинты
 
@@ -94,6 +101,10 @@ go build -o pingmon-api ./cmd/pingmon-api
 ```
 
 ### `GET /api/v1/jobs/{job_id}/results`
+
+Временное поведение в режиме `jobs-only`:
+- эндпоинт возвращает статус job и ошибку (для `failed`),
+- поле `results` сейчас пустое, потому что per-URL результаты пока не пишутся в БД.
 
 Поведение по статусу job:
 

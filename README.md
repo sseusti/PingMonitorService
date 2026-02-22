@@ -40,10 +40,17 @@ If no URLs are provided, the program uses a small built-in list of sample URLs.
 Run server:
 
 ```sh
+export DATABASE_URL='postgres://postgres:password@127.0.0.1:5432/postgres?sslmode=disable'
 ./pingmon-api
 ```
 
 Server listens on `:8080`.
+`DATABASE_URL` is required.
+
+Current storage mode is `jobs-only` in PostgreSQL:
+- Job metadata (`id`, `status`, timestamps, counters, error) is persisted in Postgres.
+- `/api/v1/jobs/{job_id}` survives server restart.
+- Per-URL check results are not persisted yet.
 
 ### Endpoints
 
@@ -96,6 +103,10 @@ Example:
 ```
 
 ### `GET /api/v1/jobs/{job_id}/results`
+
+Temporary behavior in `jobs-only` mode:
+- endpoint returns job status and error (for failed jobs),
+- `results` is currently empty because detailed per-URL results are not stored in DB yet.
 
 Response behavior by job status:
 
