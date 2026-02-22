@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -44,19 +45,24 @@ func (r *Repo) Create(ctx context.Context, total int) (Job, error) {
 }
 
 func (r *Repo) Get(ctx context.Context, id string) (Job, bool, error) {
-	if ctx.Err() != nil {
-		return Job{}, false, ctx.Err()
-	}
-
-	row := r.db.QueryRowContext(ctx, "select id, status, created_at, finished_at, done, error from jobs where id = $1", id)
+	row := r.db.QueryRowContext(ctx, "select id, status, created_at, finished_at, total, done, error from jobs where id = $1", id)
 
 	j := Job{}
-	err := row.Scan(&j.ID, &j.Status, &j.CreatedAt, &j.FinishedAt, &j.Error)
+	var finishedAt sql.NullTime
+	var errMsg sql.NullString
+	err := row.Scan(&j.ID, &j.Status, &j.CreatedAt, &finishedAt, &j.Total, &j.Done, &errMsg)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return Job{}, false, nil
 		}
 		return Job{}, false, err
+	}
+	if finishedAt.Valid {
+		t := finishedAt.Time
+		j.FinishedAt = &t
+	}
+	if errMsg.Valid {
+		j.Error = errMsg.String
 	}
 
 	return j, true, nil
